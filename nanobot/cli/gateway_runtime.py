@@ -6,6 +6,7 @@ from dataclasses import asdict, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 import typer
 from loguru import logger
@@ -22,6 +23,7 @@ from nanobot.agent.tools.image_generation import (
 from nanobot.agent.tools.mcp import MCPProvider
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.bus.events import OutboundMessage
+from nanobot.bus.outbound_events import TurnFailureNotice
 from nanobot.bus.queue import MessageBus
 from nanobot.cli import terminal as cli_terminal
 from nanobot.cli.dock import watch_gateway_icon
@@ -666,6 +668,11 @@ def _run_claimed_gateway(
                 if isinstance(message_tool, MessageTool) and suppress_token is not None:
                     message_tool.reset_suppress_delivery(suppress_token)
 
+            if resp is not None and isinstance(resp.event, TurnFailureNotice):
+                return CronRunResult(
+                    run_id=f"{job.id}:{uuid4().hex}", response="",
+                    error=resp.event.failure_error_kind or resp.event.failure_kind,
+                )
             if not resp or not resp.content:
                 return
 
@@ -741,7 +748,7 @@ def _run_claimed_gateway(
         webui_static_dist=webui_static_dist,
         webui_runtime_surface=webui_runtime_surface,
         webui_runtime_capabilities=webui_runtime_capabilities,
-        webui_mcp_runtime_status=mcp_provider.runtime_status,
+        webui_mcp_runtime_snapshot=mcp_provider.runtime_snapshot,
         webui_mcp_reload=mcp_provider.reload,
         webui_image_generation_reload=_webui_image_generation_reload,
         webui_skill_state_action=_webui_skill_state_action,

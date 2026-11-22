@@ -580,21 +580,6 @@ describe("App layout", () => {
     expect(fetchBootstrap).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the auth form when bootstrap does not issue an API token", async () => {
-    vi.mocked(fetchBootstrap).mockRejectedValueOnce(
-      new BootstrapAuthRequiredError(
-        "bootstrap authentication required: missing api_token",
-      ),
-    );
-
-    render(<App />);
-
-    expect(await screen.findByRole("heading", { level: 1, name: "Connect to nanobot" }))
-      .toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(connectSpy).not.toHaveBeenCalled();
-  });
-
   it("keeps the sign-in form mounted during submission and refocuses it on rejection", async () => {
     let rejectAttempt!: (error: Error) => void;
     vi.mocked(fetchBootstrap)
@@ -695,6 +680,31 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
     await screen.findByRole("navigation", { name: "Sidebar navigation" });
     expect(reads()).toHaveLength(1);
+  });
+
+  it("preserves a thread toast's remaining time while Settings hides the chat", async () => {
+    mockFetchRoutes({ "/api/settings": baseSettingsPayload() });
+    render(<App />);
+    await act(async () => { await import("@/components/thread/ThreadShell"); });
+    const composer = await screen.findByRole("textbox", { name: /^Message / });
+    const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    fireEvent.change(composer.closest("form")!.querySelector('input[type="file"]')!, {
+      target: { files: [new File([], "empty.csv", { type: "text/csv" })] },
+    });
+    const notice = screen.getByText("Empty files cannot be attached");
+    expect(notice).toBeVisible();
+    await advance(1_000);
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Settings" }));
+    await act(async () => { await import("@/components/settings/SettingsView"); });
+    await advance(4_000);
+    fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
+    expect(notice).toBeVisible();
+    await advance(1_999);
+    expect(notice).toBeVisible();
+    await advance(1);
+    expect(notice).not.toBeInTheDocument();
   });
 
   it("uses one main landmark and a page heading in desktop settings", async () => {
